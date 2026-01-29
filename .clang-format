@@ -1,0 +1,17 @@
+BasedOnStyle: LLVM
+AccessModifierOffset: '-4'
+AlignConsecutiveMacros: AcrossEmptyLinesAndComments
+AllowShortBlocksOnASingleLine: 'false'
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: None
+AllowShortLoopsOnASingleLine: 'true'
+BreakBeforeBraces: Attach
+ColumnLimit: '120'
+FixNamespaceComments: 'false'
+IndentCaseLabels: 'false'
+IndentWidth: '4'
+PointerAlignment: Middle
+SortIncludes: 'false'
+TabWidth: '4'
+UseTab: Never
