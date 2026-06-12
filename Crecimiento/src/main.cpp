@@ -3,6 +3,8 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include "esp_adc_cal.h"
@@ -13,6 +15,16 @@
 // ============================================================
 const char* WIFI_SSID = "MATIAS";
 const char* WIFI_PASS = "2580milen";
+
+// ============================================================
+//  CONFIGURACIÓN MQTT — HiveMQ Cloud
+// ============================================================
+const char* MQTT_HOST  = "80110a884a454289b12fbc52f1859c35.s1.eu.hivemq.cloud";
+const int   MQTT_PORT  = 8883;  // MQTT sobre TLS
+const char* MQTT_USER  = "MatuMilen02";
+const char* MQTT_PASS  = "2580Matias";
+const char* MQTT_TOPIC_STATUS  = "cabina/estado";
+const char* MQTT_TOPIC_HISTORY = "cabina/historial";
 
 // ============================================================
 //  PINES
@@ -56,10 +68,19 @@ const float TOLERANCIA    = 1.0;
 Adafruit_SSD1306 display(ANCHO_PANTALLA, ALTO_PANTALLA, &Wire, OLED_RESET);
 
 // ============================================================
-//  SERVIDOR WEB + WEBSOCKET
+//  SERVIDOR WEB LOCAL + WEBSOCKET
 // ============================================================
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
+
+// ============================================================
+//  CLIENTE MQTT
+// ============================================================
+WiFiClientSecure espClientSecure;
+PubSubClient mqttClient(espClientSecure);
+
+unsigned long lastMqttReconnect = 0;
+const unsigned long MQTT_RECONNECT_INTERVAL = 5000;  // Reintentar cada 5s
 
 // ============================================================
 //  ESTADO GLOBAL
@@ -92,7 +113,6 @@ bool firstRecordDone = false;
 
 // ============================================================
 //  LED INDICADOR (GPIO2, HIGH = encendido)
-//  Parpadea brevemente al enviar datos por WebSocket
 // ============================================================
 unsigned long ledOffTime = 0;
 const unsigned long LED_BLINK_MS = 50;
@@ -123,13 +143,46 @@ String getHistoryJson() {
   for (int i = 0; i < count; i++) {
     int idx = (start + i) % HIST_MAX;
     JsonArray entry = arr.add<JsonArray>();
-    entry.add((long)((now - hist[idx].timestamp) / 1000));  // segundos atrás
+    entry.add((long)((now - hist[idx].timestamp) / 1000));
     entry.add(round(hist[idx].temp * 10.0) / 10.0);
   }
 
   String json;
   serializeJson(doc, json);
   return json;
+}
+
+// ============================================================
+//  MQTT — Conexión y publicación
+// ============================================================
+
+void mqttConnect() {
+  if (mqttClient.connected()) return;
+
+  unsigned long now = millis();
+  if (now - lastMqttReconnect < MQTT_RECONNECT_INTERVAL) return;
+  lastMqttReconnect = now;
+
+  String clientId = "ESP32-Cabina-" + String(random(0xffff), HEX);
+  Serial.printf("[MQTT] Conectando como '%s'... ", clientId.c_str());
+
+  if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+    Serial.println("OK!");
+  } else {
+    Serial.printf("Error (rc=%d)\n", mqttClient.state());
+  }
+}
+
+void mqttPublishStatus() {
+  if (!mqttClient.connected()) return;
+  String json = getStatusJson();
+  mqttClient.publish(MQTT_TOPIC_STATUS, json.c_str(), true);  // retained
+}
+
+void mqttPublishHistory() {
+  if (!mqttClient.connected()) return;
+  String json = getHistoryJson();
+  mqttClient.publish(MQTT_TOPIC_HISTORY, json.c_str(), true);  // retained
 }
 
 // ============================================================
@@ -148,6 +201,7 @@ void recordIfNeeded() {
     firstRecordDone = true;
     Serial.printf("[HIST] Primer registro: %.1f C\n", temperatura);
     ws.textAll(getHistoryJson());
+    mqttPublishHistory();
     return;
   }
 
@@ -159,6 +213,7 @@ void recordIfNeeded() {
     lastRecordTime = now;
     Serial.printf("[HIST] Registro #%d: %.1f C\n", histCount, temperatura);
     ws.textAll(getHistoryJson());
+    mqttPublishHistory();
   }
 }
 
@@ -169,7 +224,6 @@ void onWsEvent(AsyncWebSocket *svr, AsyncWebSocketClient *client,
                AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
     Serial.printf("WS cliente #%u conectado\n", client->id());
-    // Enviar estado actual + historial al conectarse
     if (primeraLectura) {
       client->text(getStatusJson());
     }
@@ -224,34 +278,41 @@ void leerSensorYActualizar() {
   display.setCursor(10, 20);
   display.print(temperatura, 1);
   display.setTextSize(1);
-  display.print((char)247);  // Símbolo de grado
+  display.print((char)247);
   display.setTextSize(3);
   display.print("C");
 
-  // IP de WiFi abajo
+  // IP de WiFi y estado MQTT abajo
   display.setTextSize(1);
   display.setCursor(0, 55);
   if (WiFi.status() == WL_CONNECTED) {
-    display.print(F("IP: "));
     display.print(WiFi.localIP());
+    display.print(mqttClient.connected() ? " [MQTT]" : "");
   } else {
     display.print(F("WiFi: Desconectado"));
   }
   display.display();
 
-  // --- 4. Push por WebSocket ---
+  // --- 4. Push por WebSocket local ---
   if (WiFi.status() == WL_CONNECTED && ws.count() > 0) {
     ws.textAll(getStatusJson());
-    // Parpadear LED al transmitir
+  }
+
+  // --- 5. Push por MQTT a la nube ---
+  mqttPublishStatus();
+
+  // --- 6. Parpadear LED al transmitir ---
+  if (WiFi.status() == WL_CONNECTED) {
     digitalWrite(PIN_LED, HIGH);
     ledOffTime = millis();
   }
 
-  // --- 5. Debug por Serial ---
-  Serial.printf("T:%.1f C | %lu mV | Estufa:%s | WS clients:%u\n",
+  // --- 7. Debug por Serial ---
+  Serial.printf("T:%.1f C | %lu mV | Estufa:%s | WS:%u | MQTT:%s\n",
                 temperatura, voltaje_mV,
                 estufaEncendida ? "ON" : "OFF",
-                ws.count());
+                ws.count(),
+                mqttClient.connected() ? "OK" : "NO");
 }
 
 // ============================================================
@@ -288,7 +349,6 @@ void setup() {
   }
   Serial.println("[OK] Pantalla OLED inicializada");
 
-  // Pantalla de inicio
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
@@ -311,7 +371,7 @@ void setup() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("[OK] WiFi conectado!");
-    Serial.print("[OK] Dashboard: http://");
+    Serial.print("[OK] Dashboard local: http://");
     Serial.println(WiFi.localIP());
 
     display.clearDisplay();
@@ -324,7 +384,6 @@ void setup() {
     delay(2000);
   } else {
     Serial.println("[!!] No se pudo conectar al WiFi");
-    Serial.println("[!!] Reiniciando en 5 segundos...");
     display.clearDisplay();
     display.setCursor(10, 25);
     display.println(F("Error WiFi!"));
@@ -333,11 +392,17 @@ void setup() {
     ESP.restart();
   }
 
-  // --- WebSocket ---
+  // --- MQTT: configurar cliente ---
+  espClientSecure.setInsecure();  // Omitir verificación de certificado
+  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  mqttClient.setBufferSize(2048);  // Buffer grande para el JSON de historial
+  Serial.println("[OK] MQTT configurado (HiveMQ Cloud, TLS)");
+
+  // --- WebSocket local ---
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
 
-  // --- Rutas del servidor ---
+  // --- Rutas del servidor web local ---
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send_P(200, "text/html", index_html);
   });
@@ -351,7 +416,7 @@ void setup() {
   });
 
   server.begin();
-  Serial.println("[OK] Servidor web listo en puerto 80");
+  Serial.println("[OK] Servidor web local listo en puerto 80");
   Serial.printf("[OK] Lectura cada %lu s | Historial cada %lu min (%d registros = 8h)\n",
                 INTERVALO_LECTURA / 1000,
                 RECORD_INTERVAL / 60000,
@@ -364,6 +429,10 @@ void setup() {
 // ============================================================
 void loop() {
   unsigned long ahora = millis();
+
+  // Mantener conexión MQTT (non-blocking)
+  mqttConnect();
+  mqttClient.loop();
 
   // Leer sensor cada 5 segundos
   if (ahora - ultimaLectura >= INTERVALO_LECTURA) {
