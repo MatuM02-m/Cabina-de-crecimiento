@@ -107,3 +107,6 @@ build
 .pio
 .vscode
 Plaquetas/
+
+# Credenciales privadas (WiFi + MQTT)
+secrets.h

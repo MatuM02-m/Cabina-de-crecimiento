@@ -11,18 +11,11 @@
 #include "dashboard.h"
 
 // ============================================================
-//  CONFIGURACIÓN WiFi
+//  CREDENCIALES (desde secrets.h — no se sube a git)
 // ============================================================
-const char* WIFI_SSID = "MATIAS";
-const char* WIFI_PASS = "2580milen";
+#include "secrets.h"
 
-// ============================================================
-//  CONFIGURACIÓN MQTT — HiveMQ Cloud
-// ============================================================
-const char* MQTT_HOST  = "80110a884a454289b12fbc52f1859c35.s1.eu.hivemq.cloud";
-const int   MQTT_PORT  = 8883;  // MQTT sobre TLS
-const char* MQTT_USER  = "MatuMilen02";
-const char* MQTT_PASS  = "2580Matias";
+// Los topics MQTT no son secretos
 const char* MQTT_TOPIC_STATUS  = "cabina/estado";
 const char* MQTT_TOPIC_HISTORY = "cabina/historial";
 
@@ -404,7 +397,7 @@ void setup() {
 
   // --- Rutas del servidor web local ---
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send_P(200, "text/html", index_html);
+    request->send(200, "text/html", index_html);
   });
 
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
