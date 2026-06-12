@@ -106,3 +106,4 @@ build
 *.o
 .pio
 .vscode
+Plaquetas/
