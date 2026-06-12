@@ -86,7 +86,7 @@ bool primeraLectura = false;
 //  INTERVALO DE LECTURA DEL SENSOR (5 segundos)
 // ============================================================
 unsigned long ultimaLectura = 0;
-const unsigned long INTERVALO_LECTURA = 5000;
+const unsigned long INTERVALO_LECTURA = 1000;
 
 // ============================================================
 //  HISTORIAL DE TEMPERATURA
