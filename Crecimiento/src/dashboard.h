@@ -1,0 +1,582 @@
+// ============================================================
+//  DASHBOARD HTML/CSS/JS — Almacenado en flash (PROGMEM)
+//  Archivo separado para mantener main.cpp limpio
+// ============================================================
+#pragma once
+
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Cabina de Crecimiento</title>
+<meta name="description" content="Dashboard de monitoreo en tiempo real para cabina de crecimiento">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0b1120;
+  --card:rgba(255,255,255,0.03);
+  --card-b:rgba(255,255,255,0.07);
+  --card-bh:rgba(255,255,255,0.13);
+  --t1:#e2e8f0;
+  --t2:#94a3b8;
+  --t3:#64748b;
+  --t4:#475569;
+  --amber:#f59e0b;
+  --red:#ef4444;
+  --blue:#3b82f6;
+  --green:#10b981;
+  --r:16px;
+}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:'Inter',system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--bg);color:var(--t1);
+  min-height:100vh;min-height:100dvh;
+  overflow-x:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:-50%;
+  width:200%;height:200%;
+  background:
+    radial-gradient(ellipse at 25% 35%,rgba(245,158,11,0.05) 0%,transparent 55%),
+    radial-gradient(ellipse at 75% 75%,rgba(16,185,129,0.04) 0%,transparent 55%),
+    radial-gradient(ellipse at 50% 10%,rgba(59,130,246,0.03) 0%,transparent 45%);
+  animation:bgDrift 30s ease-in-out infinite alternate;
+  z-index:0;pointer-events:none;
+}
+@keyframes bgDrift{
+  0%{transform:translate(0,0) scale(1)}
+  50%{transform:translate(2%,-1.5%) scale(1.02)}
+  100%{transform:translate(-1%,2%) scale(1)}
+}
+
+/* === Layout === */
+.app{
+  position:relative;z-index:1;
+  max-width:680px;margin:0 auto;
+  padding:28px 20px 20px;min-height:100vh;
+  display:flex;flex-direction:column;
+}
+
+/* === Header === */
+header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:28px;padding-bottom:18px;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.htitle{display:flex;align-items:center;gap:12px}
+.hicon{
+  font-size:26px;
+  filter:drop-shadow(0 0 10px rgba(16,185,129,0.5));
+  animation:iconFloat 4s ease-in-out infinite;
+}
+@keyframes iconFloat{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-3px)}
+}
+h1{
+  font-size:1.25rem;font-weight:600;letter-spacing:-0.02em;
+  background:linear-gradient(135deg,#f1f5f9 0%,#94a3b8 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+
+/* === Connection badge === */
+.conn{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 13px;border-radius:20px;
+  background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.06);
+  font-size:0.75rem;color:var(--t2);
+  transition:all 0.4s ease;
+  white-space:nowrap;
+}
+.conn.ok{border-color:rgba(16,185,129,0.25);background:rgba(16,185,129,0.06)}
+.dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--red);flex-shrink:0;
+  transition:all 0.4s ease;
+}
+.dot.on{
+  background:var(--green);
+  box-shadow:0 0 10px rgba(16,185,129,0.7);
+  animation:pulse 2.5s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(0.85)}}
+
+/* === Cards === */
+.grid{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:14px;margin-bottom:14px;
+}
+.card{
+  background:var(--card);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border:1px solid var(--card-b);
+  border-radius:var(--r);
+  padding:22px;
+  transition:border-color 0.35s,box-shadow 0.4s,transform 0.35s;
+}
+.card:hover{
+  border-color:var(--card-bh);
+  box-shadow:0 8px 40px rgba(0,0,0,0.3);
+  transform:translateY(-2px);
+}
+.clbl{
+  display:flex;align-items:center;gap:8px;
+  margin-bottom:16px;font-size:0.78rem;
+  color:var(--t2);text-transform:uppercase;
+  letter-spacing:0.07em;font-weight:500;
+}
+.cico{font-size:1rem}
+
+/* === Temperature display === */
+.tmpval{text-align:center;margin-bottom:16px}
+.tv{
+  font-size:3.2rem;font-weight:700;letter-spacing:-0.04em;
+  display:inline-block;
+  transition:transform 0.3s cubic-bezier(.34,1.56,.64,1),color 0.6s ease;
+  color:var(--amber);
+}
+.tv.cool{color:var(--blue)}
+.tv.ideal{color:var(--green)}
+.tv.warm{color:var(--amber)}
+.tv.hot{color:var(--red)}
+.tv.pop{transform:scale(1.07)}
+.tu{
+  font-size:1.25rem;font-weight:300;
+  color:var(--t3);margin-left:2px;
+  vertical-align:super;font-variant-numeric:tabular-nums;
+}
+
+/* === Temperature bar === */
+.barwrap{position:relative;padding:2px 0}
+.bartrack{
+  height:6px;
+  background:rgba(255,255,255,0.06);
+  border-radius:3px;overflow:visible;
+  position:relative;
+}
+.bar{
+  height:100%;border-radius:3px;
+  background:linear-gradient(90deg,var(--blue) 0%,var(--green) 35%,var(--amber) 65%,var(--red) 100%);
+  transition:width 0.9s cubic-bezier(.22,1,.36,1);
+  position:relative;min-width:6px;
+}
+.bar::after{
+  content:'';position:absolute;right:-6px;top:-5px;
+  width:16px;height:16px;border-radius:50%;
+  background:#fff;
+  box-shadow:0 0 12px rgba(255,255,255,0.45),0 2px 8px rgba(0,0,0,0.35);
+  transition:box-shadow 0.3s;
+}
+.spmk{
+  position:absolute;top:-7px;width:2px;height:20px;
+  background:var(--green);border-radius:1px;
+  opacity:0.6;transition:left 0.9s ease;
+  z-index:2;
+}
+.spmk::before{
+  content:'SP';position:absolute;top:-15px;left:50%;
+  transform:translateX(-50%);font-size:0.55rem;
+  color:var(--green);font-weight:700;letter-spacing:0.08em;
+}
+.marks{
+  display:flex;justify-content:space-between;
+  margin-top:8px;font-size:0.62rem;color:var(--t4);
+  font-variant-numeric:tabular-nums;
+}
+
+/* === Heater indicator === */
+.hstat{
+  display:flex;justify-content:center;
+  align-items:center;min-height:130px;
+}
+.hindc{
+  width:100px;height:100px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:3px;
+  transition:all 0.5s ease;border:3px solid;
+  position:relative;
+}
+.hindc.off{
+  background:rgba(100,116,139,0.07);
+  border-color:rgba(100,116,139,0.18);color:var(--t3);
+}
+.hindc.on{
+  background:rgba(239,68,68,0.1);
+  border-color:rgba(239,68,68,0.4);color:var(--red);
+  box-shadow:0 0 30px rgba(239,68,68,0.2),0 0 60px rgba(239,68,68,0.08);
+  animation:glow 2.2s ease-in-out infinite alternate;
+}
+.hindc.on::before{
+  content:'';position:absolute;inset:-6px;
+  border-radius:50%;
+  border:2px solid rgba(239,68,68,0.12);
+  animation:ringPulse 2.2s ease-in-out infinite;
+}
+@keyframes glow{
+  0%{box-shadow:0 0 20px rgba(239,68,68,0.15),0 0 40px rgba(239,68,68,0.06)}
+  100%{box-shadow:0 0 40px rgba(239,68,68,0.3),0 0 80px rgba(239,68,68,0.12)}
+}
+@keyframes ringPulse{
+  0%,100%{transform:scale(1);opacity:0.5}
+  50%{transform:scale(1.15);opacity:0}
+}
+.htxt{font-size:1.05rem;font-weight:700;letter-spacing:0.06em}
+.hico{font-size:1.4rem;line-height:1}
+
+/* === Parameters === */
+.pgrid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+}
+.pm{
+  text-align:center;padding:14px 8px;
+  background:rgba(255,255,255,0.02);
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.04);
+  transition:all 0.3s ease;
+}
+.pm:hover{
+  border-color:rgba(255,255,255,0.1);
+  background:rgba(255,255,255,0.05);
+}
+.pml{
+  display:block;font-size:0.68rem;color:var(--t3);
+  margin-bottom:5px;text-transform:uppercase;
+  letter-spacing:0.06em;font-weight:500;
+}
+.pmv{
+  display:block;font-size:1.02rem;font-weight:600;
+  color:var(--t1);font-variant-numeric:tabular-nums;
+}
+
+/* === Chart === */
+.chwrap{
+  position:relative;
+  width:100%;height:220px;
+}
+.chwrap canvas{
+  width:100%;height:100%;
+  display:block;
+}
+.ch-empty{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--t3);font-size:0.82rem;
+}
+.ch-empty.hidden{display:none}
+
+/* === Footer === */
+.foot{
+  text-align:center;padding:18px 0 6px;
+  font-size:0.76rem;color:var(--t4);
+  margin-top:auto;
+  transition:color 0.3s;
+}
+.foot.stale{color:var(--red)}
+
+/* === Waiting state === */
+.nodata{
+  text-align:center;padding:60px 20px;
+  color:var(--t3);font-size:0.88rem;
+  flex:1;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;
+}
+.spinner{
+  width:36px;height:36px;margin-bottom:18px;
+  border:3px solid rgba(255,255,255,0.08);
+  border-top-color:var(--green);
+  border-radius:50%;
+  animation:spin 0.9s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.nodata p{margin-top:6px;font-size:0.75rem;color:var(--t4)}
+
+/* === Responsive === */
+@media(max-width:520px){
+  .grid{grid-template-columns:1fr}
+  .pgrid{gap:8px}
+  .app{padding:18px 14px 14px}
+  h1{font-size:1.1rem}
+  .tv{font-size:2.7rem}
+  .hindc{width:88px;height:88px}
+  .conn span:last-child{display:none}
+  .chwrap{height:180px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="htitle">
+      <span class="hicon">&#127793;</span>
+      <h1>Cabina de Crecimiento</h1>
+    </div>
+    <div class="conn" id="conn">
+      <span class="dot" id="dot"></span>
+      <span id="ctxt">Conectando...</span>
+    </div>
+  </header>
+
+  <div id="wait" class="nodata">
+    <div class="spinner"></div>
+    Esperando primera lectura del sensor...
+    <p>El sensor se actualiza cada 5 segundos</p>
+  </div>
+
+  <main id="main" style="display:none">
+    <div class="grid">
+      <!-- Temperatura -->
+      <div class="card" id="cardTemp">
+        <div class="clbl"><span class="cico">&#127777;&#65039;</span> Temperatura</div>
+        <div class="tmpval">
+          <span class="tv" id="tv">--.-</span>
+          <span class="tu">&deg;C</span>
+        </div>
+        <div class="barwrap">
+          <div class="bartrack">
+            <div class="bar" id="bar" style="width:0%"></div>
+            <div class="spmk" id="spmk" style="left:50%"></div>
+          </div>
+          <div class="marks">
+            <span>15&deg;</span><span>22&deg;</span><span>30&deg;</span><span>37&deg;</span><span>45&deg;</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estufa -->
+      <div class="card" id="cardHeat">
+        <div class="clbl"><span class="cico">&#128293;</span> Estufa</div>
+        <div class="hstat">
+          <div class="hindc off" id="hi">
+            <span class="hico" id="hico">&#9898;</span>
+            <span class="htxt" id="htxt">OFF</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parametros -->
+    <div class="card" style="margin-bottom:14px" id="cardParams">
+      <div class="clbl"><span class="cico">&#9881;&#65039;</span> Par&aacute;metros de control</div>
+      <div class="pgrid">
+        <div class="pm">
+          <span class="pml">Setpoint</span>
+          <span class="pmv" id="sp">--.-&deg;C</span>
+        </div>
+        <div class="pm">
+          <span class="pml">Tolerancia</span>
+          <span class="pmv" id="tol">&plusmn;-.-&deg;C</span>
+        </div>
+        <div class="pm">
+          <span class="pml">Rango</span>
+          <span class="pmv" id="rng">-- &ndash; --&deg;C</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Historial -->
+    <div class="card" style="margin-bottom:14px" id="cardChart">
+      <div class="clbl"><span class="cico">&#128200;</span> Historial (8h)</div>
+      <div class="chwrap">
+        <canvas id="chart"></canvas>
+        <div class="ch-empty" id="chEmpty">Sin registros a&uacute;n &mdash; primer dato en 10 min</div>
+      </div>
+    </div>
+  </main>
+
+  <div class="foot" id="foot">Esperando conexi&oacute;n...</div>
+</div>
+
+<script>
+(function(){
+  var ws,lu=0,rt,hb,cSP=30,cTol=1,hRec=[];
+  var $=function(i){return document.getElementById(i)};
+
+  function init(){
+    try{
+      var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+      ws=new WebSocket(proto+location.host+'/ws');
+    }catch(e){rt=setTimeout(init,3000);return}
+
+    ws.onopen=function(){
+      $('dot').classList.add('on');
+      $('ctxt').textContent='Conectado';
+      $('conn').classList.add('ok');
+      clearTimeout(rt);
+    };
+    ws.onclose=function(){
+      $('dot').classList.remove('on');
+      $('ctxt').textContent='Desconectado';
+      $('conn').classList.remove('ok');
+      rt=setTimeout(init,3000);
+    };
+    ws.onerror=function(){ws.close()};
+    ws.onmessage=function(e){
+      try{
+        var d=JSON.parse(e.data);
+        if(d.type==='hist') updHist(d.r);
+        else upd(d);
+      }catch(x){}
+    };
+  }
+
+  function upd(d){
+    lu=Date.now();
+    $('wait').style.display='none';
+    $('main').style.display='block';
+
+    if(d.t!==undefined){
+      var tv=$('tv');
+      tv.textContent=d.t.toFixed(1);
+      tv.classList.add('pop');
+      clearTimeout(hb);
+      hb=setTimeout(function(){tv.classList.remove('pop')},280);
+
+      var sp=d.sp||30,tl=d.tol||1;
+      cSP=sp;cTol=tl;
+      tv.classList.remove('cool','ideal','warm','hot');
+      if(d.t<sp-tl) tv.classList.add('cool');
+      else if(d.t<=sp+tl) tv.classList.add('ideal');
+      else tv.classList.add('hot');
+
+      var pct=Math.max(0,Math.min(100,((d.t-15)/30)*100));
+      $('bar').style.width=pct+'%';
+    }
+
+    if(d.sp!==undefined){
+      var spPct=Math.max(0,Math.min(100,((d.sp-15)/30)*100));
+      $('spmk').style.left=spPct+'%';
+    }
+
+    if(d.h!==undefined){
+      var hi=$('hi'),ht=$('htxt'),ic=$('hico');
+      if(d.h){
+        hi.className='hindc on';ht.textContent='ON';ic.innerHTML='&#128293;';
+      }else{
+        hi.className='hindc off';ht.textContent='OFF';ic.innerHTML='&#9898;';
+      }
+    }
+
+    if(d.sp!==undefined) $('sp').textContent=d.sp.toFixed(1)+'\u00b0C';
+    if(d.tol!==undefined) $('tol').textContent='\u00b1'+d.tol.toFixed(1)+'\u00b0C';
+    if(d.sp!==undefined&&d.tol!==undefined)
+      $('rng').textContent=(d.sp-d.tol).toFixed(1)+' \u2013 '+(d.sp+d.tol).toFixed(1)+'\u00b0C';
+
+    ut();
+  }
+
+  // --- Historial ---
+  function updHist(records){
+    hRec=records;
+    if(!records||records.length===0) return;
+    $('chEmpty').classList.add('hidden');
+    drawChart();
+  }
+
+  function drawChart(){
+    var c=$('chart'),ctx=c.getContext('2d');
+    var dpr=window.devicePixelRatio||1;
+    var rect=c.getBoundingClientRect();
+    c.width=rect.width*dpr;c.height=rect.height*dpr;
+    ctx.scale(dpr,dpr);
+    var W=rect.width,H=rect.height;
+    var p={t:22,r:14,b:28,l:38};
+    var cw=W-p.l-p.r,ch=H-p.t-p.b;
+
+    ctx.clearRect(0,0,W,H);
+    if(hRec.length===0) return;
+
+    var temps=hRec.map(function(r){return r[1]});
+    var mn=Math.min.apply(null,temps)-2;
+    var mx=Math.max.apply(null,temps)+2;
+    mn=Math.min(mn,cSP-cTol-1);
+    mx=Math.max(mx,cSP+cTol+1);
+    var maxAge=Math.max(hRec[0][0],600);
+
+    function xp(age){return p.l+cw*(1-age/maxAge)}
+    function yp(t){return p.t+ch*(1-(t-mn)/(mx-mn))}
+
+    // Grid horizontal
+    var step=(mx-mn)>12?4:(mx-mn)>6?2:1;
+    ctx.textBaseline='middle';
+    for(var g=Math.ceil(mn/step)*step;g<=mx;g+=step){
+      ctx.strokeStyle='rgba(255,255,255,0.05)';
+      ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(p.l,yp(g));ctx.lineTo(p.l+cw,yp(g));ctx.stroke();
+      ctx.fillStyle='#475569';ctx.font='10px Inter,system-ui';ctx.textAlign='right';
+      ctx.fillText(g+'\u00b0',p.l-5,yp(g));
+    }
+
+    // Setpoint line
+    ctx.strokeStyle='rgba(16,185,129,0.25)';
+    ctx.setLineDash([5,5]);ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(p.l,yp(cSP));ctx.lineTo(p.l+cw,yp(cSP));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(16,185,129,0.45)';ctx.font='9px Inter';ctx.textAlign='left';
+    ctx.fillText('SP '+cSP+'\u00b0',p.l+3,yp(cSP)-8);
+
+    // Tolerance band
+    ctx.fillStyle='rgba(16,185,129,0.04)';
+    ctx.fillRect(p.l,yp(cSP+cTol),cw,yp(cSP-cTol)-yp(cSP+cTol));
+
+    // X labels
+    ctx.fillStyle='#475569';ctx.font='10px Inter,system-ui';ctx.textAlign='center';
+    ctx.textBaseline='top';
+    var skip=hRec.length>30?6:hRec.length>15?3:hRec.length>8?2:1;
+    for(var i=0;i<hRec.length;i++){
+      if(i%skip!==0&&i!==hRec.length-1) continue;
+      var dt=new Date(Date.now()-hRec[i][0]*1000);
+      var lb=('0'+dt.getHours()).slice(-2)+':'+('0'+dt.getMinutes()).slice(-2);
+      ctx.fillText(lb,xp(hRec[i][0]),H-p.b+8);
+    }
+
+    // Line path
+    ctx.beginPath();
+    ctx.moveTo(xp(hRec[0][0]),yp(hRec[0][1]));
+    for(var i=1;i<hRec.length;i++)
+      ctx.lineTo(xp(hRec[i][0]),yp(hRec[i][1]));
+    var gr=ctx.createLinearGradient(0,p.t,0,p.t+ch);
+    gr.addColorStop(0,'#ef4444');gr.addColorStop(0.5,'#f59e0b');gr.addColorStop(1,'#3b82f6');
+    ctx.strokeStyle=gr;ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+
+    // Fill under line
+    ctx.lineTo(xp(hRec[hRec.length-1][0]),p.t+ch);
+    ctx.lineTo(xp(hRec[0][0]),p.t+ch);ctx.closePath();
+    var fg=ctx.createLinearGradient(0,p.t,0,p.t+ch);
+    fg.addColorStop(0,'rgba(245,158,11,0.12)');fg.addColorStop(1,'rgba(245,158,11,0)');
+    ctx.fillStyle=fg;ctx.fill();
+
+    // Dots
+    for(var i=0;i<hRec.length;i++){
+      var dx=xp(hRec[i][0]),dy=yp(hRec[i][1]);
+      ctx.beginPath();ctx.arc(dx,dy,4,0,Math.PI*2);
+      ctx.fillStyle='#fff';ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,0.25)';ctx.lineWidth=1.5;ctx.stroke();
+    }
+  }
+
+  window.addEventListener('resize',function(){if(hRec.length>0) drawChart()});
+
+  function ut(){
+    var f=$('foot');
+    if(!lu){f.textContent='Esperando datos...';f.className='foot';return}
+    var s=Math.floor((Date.now()-lu)/1000);
+    if(s<6){f.textContent='Actualizado hace un momento';f.className='foot'}
+    else if(s<60){f.textContent='Actualizado hace '+s+'s';f.className=s>15?'foot stale':'foot'}
+    else{f.textContent='Sin datos hace m\u00e1s de 1 min';f.className='foot stale'}
+  }
+
+  setInterval(ut,1000);
+  init();
+})();
+</script>
+</body>
+</html>
+)rawliteral";
