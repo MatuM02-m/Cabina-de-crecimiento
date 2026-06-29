@@ -110,3 +110,5 @@ Plaquetas/
 
 # Credenciales privadas (WiFi + MQTT)
 secrets.h
+
+.xlsx

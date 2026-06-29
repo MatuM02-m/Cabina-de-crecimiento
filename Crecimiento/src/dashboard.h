@@ -327,7 +327,7 @@ h1{
   <div id="wait" class="nodata">
     <div class="spinner"></div>
     Esperando primera lectura del sensor...
-    <p>El sensor se actualiza cada 5 segundos</p>
+    <p>El sensor se actualiza cada 1 segundo</p>
   </div>
 
   <main id="main" style="display:none">

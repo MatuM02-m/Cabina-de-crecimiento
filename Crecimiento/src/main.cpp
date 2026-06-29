@@ -31,7 +31,9 @@ const int PIN_LED  = 2;    // LED built-in
 // ============================================================
 //  CONFIGURACIÓN DEL LM35 (ADC)
 // ============================================================
-const int MUESTRAS = 64;
+const int MUESTRAS = 32;
+unsigned long ultimaLecturaTimer = 0; // Temporizador para el sensor
+const unsigned long INTERVALO_LECTURA = 500; // Refresco de 500 ms
 esp_adc_cal_characteristics_t adc_chars;
 
 // ============================================================
@@ -78,15 +80,15 @@ const unsigned long MQTT_RECONNECT_INTERVAL = 5000;  // Reintentar cada 5s
 // ============================================================
 //  ESTADO GLOBAL
 // ============================================================
+float tempFiltrada = -1.0; // Arranca en negativo para forzar la inicialización
+const float ALFA = 0.02;   // Factor de suavizado: 2% lectura nueva, 98% historia
 float temperatura = 0.0;
 bool estufaEncendida = false;
 bool primeraLectura = false;
+uint32_t ultimoVoltaje_mV = 0;
+unsigned long ultimaActualizacion = 0;
 
-// ============================================================
-//  INTERVALO DE LECTURA DEL SENSOR (5 segundos)
-// ============================================================
-unsigned long ultimaLectura = 0;
-const unsigned long INTERVALO_LECTURA = 1000;
+
 
 // ============================================================
 //  HISTORIAL DE TEMPERATURA
@@ -229,21 +231,26 @@ void onWsEvent(AsyncWebSocket *svr, AsyncWebSocketClient *client,
 }
 
 // ============================================================
-//  LECTURA DEL SENSOR + CONTROL + DISPLAY + PUSH
+//  LECTURA DEL SENSOR + CONTROL DEL RELÉ
+//  Corre en cada iteración del loop (~130ms)
 // ============================================================
-void leerSensorYActualizar() {
-  // --- 1. Leer temperatura (sobremuestreo + calibración ADC) ---
-  uint32_t suma_raw = 0;
-  for (int i = 0; i < MUESTRAS; i++) {
-    suma_raw += analogRead(PIN_LM35);
-    delay(2);
+void leerYControlar() {
+  // 1. Lectura cruda inmediata (sin for ni delays)
+  uint32_t valor_raw = analogRead(PIN_LM35);
+  ultimoVoltaje_mV = esp_adc_cal_raw_to_voltage(valor_raw, &adc_chars);
+  float tempInst = ultimoVoltaje_mV / 10.0;
+  
+  // 2. Filtro digital IIR
+  if (tempFiltrada < 0) {
+    tempFiltrada = tempInst; // Inicializa de golpe en la primera lectura
+    primeraLectura = true;
+  } else {
+    tempFiltrada = (ALFA * tempInst) + ((1.0 - ALFA) * tempFiltrada);
   }
-  uint32_t promedio_raw = suma_raw / MUESTRAS;
-  uint32_t voltaje_mV = esp_adc_cal_raw_to_voltage(promedio_raw, &adc_chars);
-  temperatura = voltaje_mV / 10.0;  // LM35: 10 mV/°C
-  primeraLectura = true;
+  
+  temperatura = tempFiltrada;
 
-  // --- 2. Control del relé con histéresis ---
+  // 3. Control del relé
   if (temperatura <= (TEMP_OBJETIVO - TOLERANCIA)) {
     digitalWrite(PIN_RELE, RELE_ENCENDIDO);
     estufaEncendida = true;
@@ -251,11 +258,16 @@ void leerSensorYActualizar() {
     digitalWrite(PIN_RELE, RELE_APAGADO);
     estufaEncendida = false;
   }
+}
 
-  // --- 3. Actualizar pantalla OLED ---
+// ============================================================
+//  ACTUALIZAR PANTALLA + PUSH DE DATOS
+//  Corre cada ~1 segundo
+// ============================================================
+void actualizarPantallaYPush() {
+  // --- Pantalla OLED ---
   display.clearDisplay();
 
-  // Título y estado del relé
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.print(F("Temp Local:"));
@@ -266,7 +278,6 @@ void leerSensorYActualizar() {
     display.print(F("[OFF]"));
   }
 
-  // Temperatura en grande
   display.setTextSize(3);
   display.setCursor(10, 20);
   display.print(temperatura, 1);
@@ -275,7 +286,6 @@ void leerSensorYActualizar() {
   display.setTextSize(3);
   display.print("C");
 
-  // IP de WiFi y estado MQTT abajo
   display.setTextSize(1);
   display.setCursor(0, 55);
   if (WiFi.status() == WL_CONNECTED) {
@@ -286,23 +296,23 @@ void leerSensorYActualizar() {
   }
   display.display();
 
-  // --- 4. Push por WebSocket local ---
+  // --- Push WebSocket local ---
   if (WiFi.status() == WL_CONNECTED && ws.count() > 0) {
     ws.textAll(getStatusJson());
   }
 
-  // --- 5. Push por MQTT a la nube ---
+  // --- Push MQTT ---
   mqttPublishStatus();
 
-  // --- 6. Parpadear LED al transmitir ---
+  // --- LED ---
   if (WiFi.status() == WL_CONNECTED) {
     digitalWrite(PIN_LED, HIGH);
     ledOffTime = millis();
   }
 
-  // --- 7. Debug por Serial ---
+  // --- Debug ---
   Serial.printf("T:%.1f C | %lu mV | Estufa:%s | WS:%u | MQTT:%s\n",
-                temperatura, voltaje_mV,
+                temperatura, ultimoVoltaje_mV,
                 estufaEncendida ? "ON" : "OFF",
                 ws.count(),
                 mqttClient.connected() ? "OK" : "NO");
@@ -329,9 +339,9 @@ void setup() {
   Serial.println("[OK] Rele configurado en GPIO26 (arranca apagado)");
 
   // --- ADC: calibración para el LM35 ---
-  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12,
+  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_0,
                            ADC_WIDTH_BIT_12, 1100, &adc_chars);
-  analogSetPinAttenuation(PIN_LM35, ADC_11db);
+  analogSetPinAttenuation(PIN_LM35, ADC_0db);
   analogReadResolution(12);
   Serial.println("[OK] ADC calibrado (GPIO34, 12-bit)");
 
@@ -410,8 +420,7 @@ void setup() {
 
   server.begin();
   Serial.println("[OK] Servidor web local listo en puerto 80");
-  Serial.printf("[OK] Lectura cada %lu s | Historial cada %lu min (%d registros = 8h)\n",
-                INTERVALO_LECTURA / 1000,
+  Serial.printf("[OK] Historial cada %lu min (%d registros = 8h)\n",
                 RECORD_INTERVAL / 60000,
                 HIST_MAX);
   Serial.println("========================================\n");
@@ -419,22 +428,25 @@ void setup() {
 
 // ============================================================
 //  LOOP
+//  El relé reacciona cada ~130ms (tiempo del sobremuestreo)
+//  La pantalla y el push se actualizan cada ~1 segundo
 // ============================================================
 void loop() {
-  unsigned long ahora = millis();
-
-  // Mantener conexión MQTT (non-blocking)
   mqttConnect();
   mqttClient.loop();
 
-  // Leer sensor cada 5 segundos
-  if (ahora - ultimaLectura >= INTERVALO_LECTURA) {
-    ultimaLectura = ahora;
-    leerSensorYActualizar();
+  // El filtro corre a máxima velocidad, amortiguando cualquier pico al instante
+  leerYControlar();
+
+  unsigned long ahora = millis();
+
+  // Pantalla y MQTT cada 1 segundo
+  if (ahora - ultimaActualizacion >= 1000) {
+    ultimaActualizacion = ahora;
+    actualizarPantallaYPush();
     recordIfNeeded();
   }
 
-  // Restaurar LED después del parpadeo
   if (ledOffTime > 0 && ahora - ledOffTime >= LED_BLINK_MS) {
     digitalWrite(PIN_LED, LOW);
     ledOffTime = 0;
