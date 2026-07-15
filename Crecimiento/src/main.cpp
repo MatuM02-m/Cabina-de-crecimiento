@@ -35,6 +35,12 @@ const int PIN_LED  = 2;    // LED built-in
 esp_adc_cal_characteristics_t adc_chars;
 
 // ============================================================
+//  CALIBRACIÓN DEL ADC — recta empírica de 2 puntos
+// ============================================================
+const float CAL_A = 0.6512;
+const float CAL_B = 89.59;
+
+// ============================================================
 //  CONFIGURACIÓN DEL RELÉ
 //  Lógica activa en HIGH: HIGH = encendido, LOW = apagado
 // ============================================================
@@ -236,6 +242,10 @@ void leerYControlar() {
   // 1. Lectura cruda inmediata (sin for ni delays)
   uint32_t valor_raw = analogRead(PIN_LM35);
   ultimoVoltaje_mV = esp_adc_cal_raw_to_voltage(valor_raw, &adc_chars);
+
+  // Calibración: Compensación del offset del ADC (30 mV)
+  ultimoVoltaje_mV = (uint32_t)(CAL_A * ultimoVoltaje_mV + CAL_B);
+
   float tempInst = ultimoVoltaje_mV / 10.0;
   
   // 2. Filtro digital IIR
@@ -337,8 +347,15 @@ void setup() {
   Serial.println("[OK] Rele configurado en GPIO26 (arranca apagado)");
 
   // --- ADC: calibración para el LM35 ---
-  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_0,
+  esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_0,
                            ADC_WIDTH_BIT_12, 1100, &adc_chars);
+  if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
+    Serial.println("[ADC] Calibracion: Two Point (fabrica) - buena");
+  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+    Serial.println("[ADC] Calibracion: eFuse Vref - aceptable");
+  } else {
+    Serial.println("[ADC] Calibracion: Default Vref - POCO CONFIABLE");
+  }
   analogSetPinAttenuation(PIN_LM35, ADC_0db);
   analogReadResolution(12);
   Serial.println("[OK] ADC calibrado (GPIO34, 12-bit)");
