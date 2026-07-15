@@ -31,9 +31,7 @@ const int PIN_LED  = 2;    // LED built-in
 // ============================================================
 //  CONFIGURACIÓN DEL LM35 (ADC)
 // ============================================================
-const int MUESTRAS = 32;
-unsigned long ultimaLecturaTimer = 0; // Temporizador para el sensor
-const unsigned long INTERVALO_LECTURA = 500; // Refresco de 500 ms
+
 esp_adc_cal_characteristics_t adc_chars;
 
 // ============================================================
