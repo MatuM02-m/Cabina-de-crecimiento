@@ -192,6 +192,32 @@ h1{
   font-variant-numeric:tabular-nums;
 }
 
+/* === Sensor grid (4 sensores individuales) === */
+.sgrid{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:6px;margin-top:14px;
+}
+.si{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:6px 10px;
+  background:rgba(255,255,255,0.025);
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.05);
+  transition:border-color 0.3s,background 0.3s;
+}
+.si:hover{
+  border-color:rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.05);
+}
+.sl{
+  font-size:0.7rem;color:var(--t3);
+  font-weight:500;letter-spacing:0.03em;
+}
+.sv{
+  font-size:0.82rem;color:var(--t1);
+  font-weight:600;font-variant-numeric:tabular-nums;
+}
+
 /* === Heater indicator === */
 .hstat{
   display:flex;justify-content:center;
@@ -233,7 +259,7 @@ h1{
 
 /* === Parameters === */
 .pgrid{
-  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+  display:grid;grid-template-columns:repeat(2,1fr);gap:10px;
 }
 .pm{
   text-align:center;padding:14px 8px;
@@ -255,6 +281,7 @@ h1{
   display:block;font-size:1.02rem;font-weight:600;
   color:var(--t1);font-variant-numeric:tabular-nums;
 }
+.pm.crop .pmv{color:var(--green)}
 
 /* === Chart === */
 .chwrap{
@@ -271,6 +298,30 @@ h1{
   color:var(--t3);font-size:0.82rem;
 }
 .ch-empty.hidden{display:none}
+
+/* === Chart legend === */
+.ch-legend{
+  display:flex;gap:16px;margin-top:8px;
+  justify-content:center;
+}
+.ch-leg-item{
+  display:flex;align-items:center;gap:5px;
+  font-size:0.68rem;color:var(--t3);
+}
+.ch-leg-line{
+  width:18px;height:3px;border-radius:2px;
+}
+.ch-leg-cabin{
+  background:linear-gradient(90deg,var(--blue),var(--amber),var(--red));
+}
+.ch-leg-crop{
+  background:var(--green);
+  height:2px;
+  border:none;
+  background-image:repeating-linear-gradient(
+    90deg, var(--green) 0px, var(--green) 4px, transparent 4px, transparent 7px
+  );
+}
 
 /* === Footer === */
 .foot{
@@ -308,6 +359,8 @@ h1{
   .hindc{width:88px;height:88px}
   .conn span:last-child{display:none}
   .chwrap{height:180px}
+  .sgrid{gap:4px}
+  .si{padding:5px 8px}
 }
 </style>
 </head>
@@ -327,7 +380,7 @@ h1{
   <div id="wait" class="nodata">
     <div class="spinner"></div>
     Esperando primera lectura del sensor...
-    <p>El sensor se actualiza cada 1 segundo</p>
+    <p>Los sensores DS18B20 se actualizan cada ~1 segundo</p>
   </div>
 
   <main id="main" style="display:none">
@@ -347,6 +400,13 @@ h1{
           <div class="marks">
             <span>15&deg;</span><span>22&deg;</span><span>30&deg;</span><span>37&deg;</span><span>45&deg;</span>
           </div>
+        </div>
+        <!-- Grilla de sensores individuales -->
+        <div class="sgrid">
+          <div class="si"><span class="sl">&#8593;Izq</span><span class="sv" id="s0">--.-&deg;</span></div>
+          <div class="si"><span class="sl">&#8593;Der</span><span class="sv" id="s2">--.-&deg;</span></div>
+          <div class="si"><span class="sl">&#8595;Izq</span><span class="sv" id="s1">--.-&deg;</span></div>
+          <div class="si"><span class="sl">&#8595;Der</span><span class="sv" id="s3">--.-&deg;</span></div>
         </div>
       </div>
 
@@ -378,6 +438,10 @@ h1{
           <span class="pml">Rango</span>
           <span class="pmv" id="rng">-- &ndash; --&deg;C</span>
         </div>
+        <div class="pm crop">
+          <span class="pml">&#127793; Cultivo</span>
+          <span class="pmv" id="cult">--.-&deg;C</span>
+        </div>
       </div>
     </div>
 
@@ -387,6 +451,10 @@ h1{
       <div class="chwrap">
         <canvas id="chart"></canvas>
         <div class="ch-empty" id="chEmpty">Sin registros a&uacute;n &mdash; primer dato en 10 min</div>
+      </div>
+      <div class="ch-legend">
+        <div class="ch-leg-item"><span class="ch-leg-line ch-leg-cabin"></span>Cabina (prom.)</div>
+        <div class="ch-leg-item"><span class="ch-leg-line ch-leg-crop"></span>Cultivo</div>
       </div>
     </div>
   </main>
@@ -464,6 +532,31 @@ h1{
       }
     }
 
+    // Sensores individuales de cabina
+    if(d.sensors){
+      // Orden en JSON: [ArribaIzq, AbajoIzq, ArribaDer, AbajoDer]
+      for(var i=0;i<4;i++){
+        var el=$('s'+i);
+        if(el){
+          if(d.sensors[i]!==null&&d.sensors[i]!==undefined){
+            el.textContent=d.sensors[i].toFixed(1)+'\u00b0';
+          }else{
+            el.textContent='--.-\u00b0';
+          }
+        }
+      }
+    }
+
+    // Temperatura del cultivo
+    if(d.tCultivo!==undefined){
+      var ce=$('cult');
+      if(d.tCultivo>-50){
+        ce.textContent=d.tCultivo.toFixed(1)+'\u00b0C';
+      }else{
+        ce.textContent='--.-\u00b0C';
+      }
+    }
+
     if(d.sp!==undefined) $('sp').textContent=d.sp.toFixed(1)+'\u00b0C';
     if(d.tol!==undefined) $('tol').textContent='\u00b1'+d.tol.toFixed(1)+'\u00b0C';
     if(d.sp!==undefined&&d.tol!==undefined)
@@ -493,9 +586,12 @@ h1{
     ctx.clearRect(0,0,W,H);
     if(hRec.length===0) return;
 
+    // Calcular rango Y incluyendo ambas series
     var temps=hRec.map(function(r){return r[1]});
-    var mn=Math.min.apply(null,temps)-2;
-    var mx=Math.max.apply(null,temps)+2;
+    var cropTemps=hRec.map(function(r){return r[2]}).filter(function(t){return t>-50});
+    var allTemps=temps.concat(cropTemps);
+    var mn=Math.min.apply(null,allTemps)-2;
+    var mx=Math.max.apply(null,allTemps)+2;
     mn=Math.min(mn,cSP-cTol-1);
     mx=Math.max(mx,cSP+cTol+1);
     var maxAge=Math.max(hRec[0][0],600);
@@ -537,7 +633,7 @@ h1{
       ctx.fillText(lb,xp(hRec[i][0]),H-p.b+8);
     }
 
-    // Line path
+    // === Línea de temperatura de cabina (promedio) ===
     ctx.beginPath();
     ctx.moveTo(xp(hRec[0][0]),yp(hRec[0][1]));
     for(var i=1;i<hRec.length;i++)
@@ -546,19 +642,44 @@ h1{
     gr.addColorStop(0,'#ef4444');gr.addColorStop(0.5,'#f59e0b');gr.addColorStop(1,'#3b82f6');
     ctx.strokeStyle=gr;ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
 
-    // Fill under line
+    // Fill under cabin line
     ctx.lineTo(xp(hRec[hRec.length-1][0]),p.t+ch);
     ctx.lineTo(xp(hRec[0][0]),p.t+ch);ctx.closePath();
     var fg=ctx.createLinearGradient(0,p.t,0,p.t+ch);
     fg.addColorStop(0,'rgba(245,158,11,0.12)');fg.addColorStop(1,'rgba(245,158,11,0)');
     ctx.fillStyle=fg;ctx.fill();
 
-    // Dots
+    // Dots for cabin
     for(var i=0;i<hRec.length;i++){
       var dx=xp(hRec[i][0]),dy=yp(hRec[i][1]);
       ctx.beginPath();ctx.arc(dx,dy,4,0,Math.PI*2);
       ctx.fillStyle='#fff';ctx.fill();
       ctx.strokeStyle='rgba(0,0,0,0.25)';ctx.lineWidth=1.5;ctx.stroke();
+    }
+
+    // === Línea de temperatura del cultivo (verde, punteada) ===
+    var cropStarted=false;
+    ctx.beginPath();
+    for(var i=0;i<hRec.length;i++){
+      if(hRec[i][2]<=-50) continue;  // saltar sensores desconectados
+      var cx=xp(hRec[i][0]),cy=yp(hRec[i][2]);
+      if(!cropStarted){ctx.moveTo(cx,cy);cropStarted=true}
+      else ctx.lineTo(cx,cy);
+    }
+    if(cropStarted){
+      ctx.strokeStyle='rgba(16,185,129,0.7)';
+      ctx.lineWidth=2;ctx.setLineDash([6,4]);
+      ctx.lineJoin='round';ctx.lineCap='round';
+      ctx.stroke();ctx.setLineDash([]);
+    }
+
+    // Dots for crop
+    for(var i=0;i<hRec.length;i++){
+      if(hRec[i][2]<=-50) continue;
+      var cx=xp(hRec[i][0]),cy=yp(hRec[i][2]);
+      ctx.beginPath();ctx.arc(cx,cy,3,0,Math.PI*2);
+      ctx.fillStyle='var(--green)';ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,0.2)';ctx.lineWidth=1;ctx.stroke();
     }
   }
 
