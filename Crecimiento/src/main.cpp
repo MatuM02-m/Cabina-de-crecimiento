@@ -79,6 +79,17 @@ const int FAN_DUTY_HIGH      = 191;    // ~75%
 const int FAN_DUTY_MAX       = 255;    // 100%
 
 // ============================================================
+//  CONFIGURACIÓN DEL BUZZER (PWM)
+//  UDB-05LFPN: buzzer magnético (pasivo), 5V nom, 3-7V rango
+//  Necesita señal cuadrada a ~2300Hz para sonar
+//  Conectar directamente a GPIO25 (3.3V, 30mA máx — OK)
+// ============================================================
+const int BUZZER_FREQ       = 2300;   // 2300Hz (±400Hz según datasheet)
+const int BUZZER_RESOLUTION = 8;      // 8 bits
+const int BUZZER_DUTY_ON    = 128;    // 50% duty = onda cuadrada (tono)
+const int BUZZER_DUTY_OFF   = 0;      // Sin señal = silencio
+
+// ============================================================
 //  PARÁMETROS DE CONTROL TÉRMICO (Histéresis)
 //  Enciende al caer a (OBJETIVO - TOLERANCIA) = 29°C
 //  Apaga al subir a  (OBJETIVO + TOLERANCIA) = 31°C
@@ -406,13 +417,13 @@ void controlarSeguridad() {
     Serial.printf("     Cultivo: %.1f C | Accion: Estufa OFF, Fan 100%%, Buzzer ON\n", tempCultivo);
   } else if (modoSeguridad && tempCultivo <= TEMP_RECUPERACION) {
     modoSeguridad = false;
-    digitalWrite(PIN_BUZZER, LOW);  // Apagar buzzer al recuperar
+    ledcWrite(PIN_BUZZER, BUZZER_DUTY_OFF);  // Apagar buzzer al recuperar
     Serial.println("[OK] SEGURIDAD DESACTIVADA: Temp cultivo < 33 C");
     Serial.printf("     Cultivo: %.1f C | Volviendo a control normal\n", tempCultivo);
   }
 
-  // Buzzer continuo mientras esté en modo seguridad
-  digitalWrite(PIN_BUZZER, modoSeguridad ? HIGH : LOW);
+  // Buzzer: tono a 2300Hz mientras esté en modo seguridad
+  ledcWrite(PIN_BUZZER, modoSeguridad ? BUZZER_DUTY_ON : BUZZER_DUTY_OFF);
 }
 
 // ============================================================
@@ -529,10 +540,10 @@ void setup() {
   ledcWrite(PIN_FAN, FAN_DUTY_OFF);  // Arranca apagado
   Serial.println("[OK] Ventilador PWM configurado en GPIO27 (25kHz, 8-bit)");
 
-  // --- Buzzer: pin de salida, arranca apagado ---
-  pinMode(PIN_BUZZER, OUTPUT);
-  digitalWrite(PIN_BUZZER, LOW);
-  Serial.printf("[OK] Buzzer configurado en GPIO%d (seguridad)\n", PIN_BUZZER);
+  // --- Buzzer: PWM a 2300Hz (UDB-05LFPN, buzzer magnético pasivo) ---
+  ledcAttach(PIN_BUZZER, BUZZER_FREQ, BUZZER_RESOLUTION);
+  ledcWrite(PIN_BUZZER, BUZZER_DUTY_OFF);  // Arranca en silencio
+  Serial.printf("[OK] Buzzer PWM configurado en GPIO%d (2300Hz, pasivo)\n", PIN_BUZZER);
 
   // --- DS18B20: inicializar los 3 buses OneWire ---
   sensoresBus1.begin();
