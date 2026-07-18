@@ -30,6 +30,7 @@ const int PIN_OW_BUS2 = 16;   // OneWire Bus 2 — sensores derechos  (↑Der + 
 const int PIN_OW_BUS3 = 17;   // OneWire Bus 3 — sensor cultivo (seguridad)
 const int PIN_RELE    = 26;   // GPIO26 — Relé estufa
 const int PIN_FAN     = 27;   // GPIO27 — PWM ventilador (via BC337 + optoacoplador)
+const int PIN_BUZZER  = 25;   // GPIO25 — Buzzer 5V (alerta de seguridad)
 const int PIN_LED     = 2;    // LED built-in
 
 // ============================================================
@@ -86,6 +87,14 @@ const float TEMP_OBJETIVO = 30.0;
 const float TOLERANCIA    = 1.0;
 
 // ============================================================
+//  PARÁMETROS DE SEGURIDAD (Sensor cultivo)
+//  Activa modo seguridad si cultivo > 35°C
+//  Desactiva cuando cultivo < 33°C (histéresis de 2°C)
+// ============================================================
+const float TEMP_SEGURIDAD    = 35.0;  // Umbral de activación
+const float TEMP_RECUPERACION = 33.0;  // Umbral de desactivación
+
+// ============================================================
 //  CONFIGURACIÓN OLED — SSD1306 128x64 por I2C
 //  SDA = GPIO21, SCL = GPIO22 (lado derecho)
 // ============================================================
@@ -119,6 +128,7 @@ float tempCultivo     = -127.0;   // Sensor del cultivo (seguridad)
 float temperatura     = 0.0;      // Promedio de cabina (para control)
 bool estufaEncendida  = false;
 int  fanPorcentaje    = 0;       // Porcentaje actual del ventilador (0-100)
+bool modoSeguridad    = false;   // Lazo de seguridad activo
 bool primeraLectura   = false;
 unsigned long ultimaActualizacion = 0;
 
@@ -157,6 +167,7 @@ String getStatusJson() {
   doc["tol"] = TOLERANCIA;
   doc["tCultivo"] = round(tempCultivo * 10.0) / 10.0;
   doc["fan"] = fanPorcentaje;
+  doc["safety"] = modoSeguridad;
 
   JsonArray sensors = doc["sensors"].to<JsonArray>();
   for (int i = 0; i < 4; i++) {
@@ -330,9 +341,17 @@ void leerSensores() {
 // ============================================================
 //  CONTROL DEL RELÉ (Histéresis)
 //  Usa el promedio de los 4 sensores de cabina
+//  ANULADO por modo seguridad (estufa forzada OFF)
 // ============================================================
 void controlarEstufa() {
   if (!primeraLectura) return;
+
+  // Modo seguridad: estufa SIEMPRE apagada
+  if (modoSeguridad) {
+    digitalWrite(PIN_RELE, RELE_APAGADO);
+    estufaEncendida = false;
+    return;
+  }
 
   if (temperatura <= (TEMP_OBJETIVO - TOLERANCIA)) {
     digitalWrite(PIN_RELE, RELE_ENCENDIDO);
@@ -347,15 +366,19 @@ void controlarEstufa() {
 // ============================================================
 //  CONTROL DEL VENTILADOR (PWM)
 //  Distribuye el calor y mantiene circulación de aire
-//  < 29°C  → 75% (distribución activa del calor de la estufa)
-//  29-31°C → 30% (circulación suave, temp en rango)
-//  > 31°C  → 30% (circulación suave, estufa apagada)
+//  MODO SEGURIDAD: forzado a 100%
+//  Normal: < 29°C → 75% | ≥ 29°C → 30%
 // ============================================================
 void controlarVentilador() {
   if (!primeraLectura) return;
 
   int duty;
-  if (temperatura < (TEMP_OBJETIVO - TOLERANCIA)) {
+
+  // Modo seguridad: ventilador al máximo
+  if (modoSeguridad) {
+    duty = FAN_DUTY_MAX;
+    fanPorcentaje = 100;
+  } else if (temperatura < (TEMP_OBJETIVO - TOLERANCIA)) {
     duty = FAN_DUTY_HIGH;   // 75% — distribuir calor
     fanPorcentaje = 75;
   } else {
@@ -364,6 +387,32 @@ void controlarVentilador() {
   }
 
   ledcWrite(PIN_FAN, duty);
+}
+
+// ============================================================
+//  LAZO DE SEGURIDAD
+//  Monitorea el sensor del cultivo (Bus 3)
+//  Activa si cultivo > 35°C → estufa OFF, fan 100%, buzzer ON
+//  Desactiva si cultivo < 33°C → vuelve a control normal
+// ============================================================
+void controlarSeguridad() {
+  if (!primeraLectura) return;
+  // Solo actuar si el sensor del cultivo está conectado
+  if (tempCultivo < -50.0 || tempCultivo > 125.0) return;
+
+  if (!modoSeguridad && tempCultivo >= TEMP_SEGURIDAD) {
+    modoSeguridad = true;
+    Serial.println("[!!] SEGURIDAD ACTIVADA: Temp cultivo > 35 C");
+    Serial.printf("     Cultivo: %.1f C | Accion: Estufa OFF, Fan 100%%, Buzzer ON\n", tempCultivo);
+  } else if (modoSeguridad && tempCultivo <= TEMP_RECUPERACION) {
+    modoSeguridad = false;
+    digitalWrite(PIN_BUZZER, LOW);  // Apagar buzzer al recuperar
+    Serial.println("[OK] SEGURIDAD DESACTIVADA: Temp cultivo < 33 C");
+    Serial.printf("     Cultivo: %.1f C | Volviendo a control normal\n", tempCultivo);
+  }
+
+  // Buzzer continuo mientras esté en modo seguridad
+  digitalWrite(PIN_BUZZER, modoSeguridad ? HIGH : LOW);
 }
 
 // ============================================================
@@ -410,7 +459,12 @@ void actualizarPantallaYPush() {
 
   // Línea 4: Temperatura cultivo (y=46)
   display.setCursor(0, 46);
-  display.printf("Cultivo: %.1f%cC", tempCultivo, (char)247);
+  if (modoSeguridad) {
+    display.print(F("!! SEGURIDAD !! "));
+    display.printf("%.1fC", tempCultivo);
+  } else {
+    display.printf("Cultivo: %.1f%cC", tempCultivo, (char)247);
+  }
 
   // Línea 5: WiFi + MQTT (y=56)
   display.setCursor(0, 56);
@@ -437,13 +491,14 @@ void actualizarPantallaYPush() {
   }
 
   // --- Debug Serial ---
-  Serial.printf("Prom:%.1f C | [%.1f %.1f %.1f %.1f] | Cult:%.1f | Est:%s | Fan:%d%% | WS:%u | MQTT:%s\n",
+  Serial.printf("Prom:%.1f C | [%.1f %.1f %.1f %.1f] | Cult:%.1f | Est:%s | Fan:%d%% | Seg:%s | WS:%u | MQTT:%s\n",
                 temperatura,
                 tempSensores[0], tempSensores[1],
                 tempSensores[2], tempSensores[3],
                 tempCultivo,
                 estufaEncendida ? "ON" : "OFF",
                 fanPorcentaje,
+                modoSeguridad ? "!!" : "OK",
                 ws.count(),
                 mqttClient.connected() ? "OK" : "NO");
 }
@@ -473,6 +528,11 @@ void setup() {
   ledcAttach(PIN_FAN, FAN_PWM_FREQ, FAN_PWM_RESOLUTION);
   ledcWrite(PIN_FAN, FAN_DUTY_OFF);  // Arranca apagado
   Serial.println("[OK] Ventilador PWM configurado en GPIO27 (25kHz, 8-bit)");
+
+  // --- Buzzer: pin de salida, arranca apagado ---
+  pinMode(PIN_BUZZER, OUTPUT);
+  digitalWrite(PIN_BUZZER, LOW);
+  Serial.printf("[OK] Buzzer configurado en GPIO%d (seguridad)\n", PIN_BUZZER);
 
   // --- DS18B20: inicializar los 3 buses OneWire ---
   sensoresBus1.begin();
@@ -629,6 +689,9 @@ void loop() {
 
   // Lectura asíncrona de los DS18B20 (no bloquea)
   leerSensores();
+
+  // Lazo de seguridad (prioridad máxima, antes de estufa y fan)
+  controlarSeguridad();
 
   // Control del relé y ventilador basado en el promedio de cabina
   controlarEstufa();

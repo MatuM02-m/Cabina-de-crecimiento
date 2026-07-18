@@ -380,6 +380,31 @@ h1{
 }
 .foot.stale{color:var(--red)}
 
+/* === Safety banner === */
+.safety-banner{
+  display:none;
+  padding:14px 18px;
+  border-radius:var(--r);
+  background:rgba(239,68,68,0.12);
+  border:1px solid rgba(239,68,68,0.35);
+  margin-bottom:14px;
+  text-align:center;
+  animation:safetyPulse 1.5s ease-in-out infinite;
+}
+.safety-banner.active{display:block}
+@keyframes safetyPulse{
+  0%,100%{background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.35)}
+  50%{background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.55)}
+}
+.safety-banner .sb-icon{font-size:1.3rem;margin-bottom:4px}
+.safety-banner .sb-title{
+  font-size:0.88rem;font-weight:700;color:var(--red);
+  letter-spacing:0.04em;text-transform:uppercase;
+}
+.safety-banner .sb-desc{
+  font-size:0.74rem;color:var(--t2);margin-top:4px;
+}
+
 /* === Waiting state === */
 .nodata{
   text-align:center;padding:60px 20px;
@@ -433,6 +458,13 @@ h1{
   </div>
 
   <main id="main" style="display:none">
+    <!-- Banner de seguridad (oculto por defecto) -->
+    <div class="safety-banner" id="safetyBanner">
+      <div class="sb-icon">&#9888;&#65039;</div>
+      <div class="sb-title">Modo Seguridad Activo</div>
+      <div class="sb-desc">Temp. cultivo cr&iacute;tica &mdash; Estufa OFF, ventilador al 100%, buzzer activo</div>
+    </div>
+
     <div class="grid">
       <!-- Temperatura -->
       <div class="card" id="cardTemp">
@@ -624,6 +656,19 @@ h1{
       var fi=$('fi'),ft=$('ftxt');
       ft.textContent=d.fan+'%';
       fi.className='findc '+(d.fan>=100?'fmax':d.fan>=50?'fhigh':d.fan>0?'flow':'foff');
+    }
+
+    // Modo seguridad
+    if(d.safety!==undefined){
+      var sb=$('safetyBanner');
+      var cultCard=$('cult');
+      if(d.safety){
+        sb.classList.add('active');
+        if(cultCard) cultCard.style.color='var(--red)';
+      }else{
+        sb.classList.remove('active');
+        if(cultCard) cultCard.style.color='';
+      }
     }
 
     if(d.sp!==undefined) $('sp').textContent=d.sp.toFixed(1)+'\u00b0C';
