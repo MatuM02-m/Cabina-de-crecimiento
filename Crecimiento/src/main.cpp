@@ -29,6 +29,7 @@ const int PIN_OW_BUS1 = 4;    // OneWire Bus 1 — sensores izquierdos (↑Izq +
 const int PIN_OW_BUS2 = 16;   // OneWire Bus 2 — sensores derechos  (↑Der + ↓Der)
 const int PIN_OW_BUS3 = 17;   // OneWire Bus 3 — sensor cultivo (seguridad)
 const int PIN_RELE    = 26;   // GPIO26 — Relé estufa
+const int PIN_FAN     = 27;   // GPIO27 — PWM ventilador (via BC337 + optoacoplador)
 const int PIN_LED     = 2;    // LED built-in
 
 // ============================================================
@@ -63,6 +64,18 @@ enum SensorCabina { ARRIBA_IZQ = 0, ABAJO_IZQ = 1, ARRIBA_DER = 2, ABAJO_DER = 3
 // ============================================================
 #define RELE_ENCENDIDO HIGH
 #define RELE_APAGADO   LOW
+
+// ============================================================
+//  CONFIGURACIÓN DEL VENTILADOR (PWM)
+//  Cooler de PC 12V controlado por BC337 + optoacoplador
+//  PWM a 25kHz para evitar ruido audible, resolución 8 bits
+// ============================================================
+const int FAN_PWM_FREQ       = 25000;  // 25kHz (inaudible)
+const int FAN_PWM_RESOLUTION = 8;      // 8 bits → 0-255
+const int FAN_DUTY_OFF       = 0;      //   0%
+const int FAN_DUTY_LOW       = 76;     // ~30%
+const int FAN_DUTY_HIGH      = 191;    // ~75%
+const int FAN_DUTY_MAX       = 255;    // 100%
 
 // ============================================================
 //  PARÁMETROS DE CONTROL TÉRMICO (Histéresis)
@@ -105,6 +118,7 @@ float tempSensores[4] = {-127.0, -127.0, -127.0, -127.0};  // 4 sensores cabina
 float tempCultivo     = -127.0;   // Sensor del cultivo (seguridad)
 float temperatura     = 0.0;      // Promedio de cabina (para control)
 bool estufaEncendida  = false;
+int  fanPorcentaje    = 0;       // Porcentaje actual del ventilador (0-100)
 bool primeraLectura   = false;
 unsigned long ultimaActualizacion = 0;
 
@@ -142,6 +156,7 @@ String getStatusJson() {
   doc["sp"] = TEMP_OBJETIVO;
   doc["tol"] = TOLERANCIA;
   doc["tCultivo"] = round(tempCultivo * 10.0) / 10.0;
+  doc["fan"] = fanPorcentaje;
 
   JsonArray sensors = doc["sensors"].to<JsonArray>();
   for (int i = 0; i < 4; i++) {
@@ -330,6 +345,28 @@ void controlarEstufa() {
 }
 
 // ============================================================
+//  CONTROL DEL VENTILADOR (PWM)
+//  Distribuye el calor y mantiene circulación de aire
+//  < 29°C  → 75% (distribución activa del calor de la estufa)
+//  29-31°C → 30% (circulación suave, temp en rango)
+//  > 31°C  → 30% (circulación suave, estufa apagada)
+// ============================================================
+void controlarVentilador() {
+  if (!primeraLectura) return;
+
+  int duty;
+  if (temperatura < (TEMP_OBJETIVO - TOLERANCIA)) {
+    duty = FAN_DUTY_HIGH;   // 75% — distribuir calor
+    fanPorcentaje = 75;
+  } else {
+    duty = FAN_DUTY_LOW;    // 30% — circulación suave
+    fanPorcentaje = 30;
+  }
+
+  ledcWrite(PIN_FAN, duty);
+}
+
+// ============================================================
 //  FUNCIÓN AUXILIAR — Imprimir dirección ROM de un DS18B20
 // ============================================================
 void printAddress(DeviceAddress addr) {
@@ -351,12 +388,9 @@ void actualizarPantallaYPush() {
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.print(F("Cabina:"));
-  display.setCursor(76, 0);
-  if (estufaEncendida) {
-    display.print(F("[EST:ON]"));
-  } else {
-    display.print(F("[EST:OFF]"));
-  }
+  display.setCursor(64, 0);
+  display.printf("E:%s F:%d%%",
+    estufaEncendida ? "ON" : "OF", fanPorcentaje);
 
   // Línea 2: Temperatura promedio grande (y=10)
   display.setTextSize(3);
@@ -403,12 +437,13 @@ void actualizarPantallaYPush() {
   }
 
   // --- Debug Serial ---
-  Serial.printf("Prom:%.1f C | [%.1f %.1f %.1f %.1f] | Cult:%.1f | Est:%s | WS:%u | MQTT:%s\n",
+  Serial.printf("Prom:%.1f C | [%.1f %.1f %.1f %.1f] | Cult:%.1f | Est:%s | Fan:%d%% | WS:%u | MQTT:%s\n",
                 temperatura,
                 tempSensores[0], tempSensores[1],
                 tempSensores[2], tempSensores[3],
                 tempCultivo,
                 estufaEncendida ? "ON" : "OFF",
+                fanPorcentaje,
                 ws.count(),
                 mqttClient.connected() ? "OK" : "NO");
 }
@@ -422,7 +457,7 @@ void setup() {
 
   Serial.println("\n========================================");
   Serial.println(" Cabina de Crecimiento - ESP32");
-  Serial.println(" 5x DS18B20 | Rele | OLED | MQTT");
+  Serial.println(" 5x DS18B20 | Rele | Fan PWM | OLED | MQTT");
   Serial.println("========================================");
 
   // --- LED indicador ---
@@ -433,6 +468,11 @@ void setup() {
   pinMode(PIN_RELE, OUTPUT);
   digitalWrite(PIN_RELE, RELE_APAGADO);
   Serial.println("[OK] Rele configurado en GPIO26 (arranca apagado)");
+
+  // --- Ventilador: PWM a 25kHz ---
+  ledcAttach(PIN_FAN, FAN_PWM_FREQ, FAN_PWM_RESOLUTION);
+  ledcWrite(PIN_FAN, FAN_DUTY_OFF);  // Arranca apagado
+  Serial.println("[OK] Ventilador PWM configurado en GPIO27 (25kHz, 8-bit)");
 
   // --- DS18B20: inicializar los 3 buses OneWire ---
   sensoresBus1.begin();
@@ -590,8 +630,9 @@ void loop() {
   // Lectura asíncrona de los DS18B20 (no bloquea)
   leerSensores();
 
-  // Control del relé basado en el promedio de cabina
+  // Control del relé y ventilador basado en el promedio de cabina
   controlarEstufa();
+  controlarVentilador();
 
   unsigned long ahora = millis();
 

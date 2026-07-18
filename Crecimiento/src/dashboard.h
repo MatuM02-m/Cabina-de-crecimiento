@@ -257,6 +257,54 @@ h1{
 .htxt{font-size:1.05rem;font-weight:700;letter-spacing:0.06em}
 .hico{font-size:1.4rem;line-height:1}
 
+/* === Fan indicator === */
+.fstat{
+  display:flex;justify-content:center;
+  align-items:center;min-height:130px;
+}
+.findc{
+  width:100px;height:100px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:2px;
+  transition:all 0.5s ease;border:3px solid;
+  position:relative;
+}
+.findc.foff{
+  background:rgba(100,116,139,0.07);
+  border-color:rgba(100,116,139,0.18);color:var(--t3);
+}
+.findc.flow{
+  background:rgba(59,130,246,0.08);
+  border-color:rgba(59,130,246,0.3);color:var(--blue);
+  box-shadow:0 0 20px rgba(59,130,246,0.12);
+}
+.findc.fhigh{
+  background:rgba(59,130,246,0.12);
+  border-color:rgba(59,130,246,0.45);color:var(--blue);
+  box-shadow:0 0 30px rgba(59,130,246,0.2),0 0 60px rgba(59,130,246,0.08);
+}
+.findc.fmax{
+  background:rgba(245,158,11,0.1);
+  border-color:rgba(245,158,11,0.4);color:var(--amber);
+  box-shadow:0 0 35px rgba(245,158,11,0.2),0 0 70px rgba(245,158,11,0.08);
+  animation:fanGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes fanGlow{
+  0%{box-shadow:0 0 20px rgba(245,158,11,0.15),0 0 40px rgba(245,158,11,0.06)}
+  100%{box-shadow:0 0 40px rgba(245,158,11,0.3),0 0 80px rgba(245,158,11,0.12)}
+}
+.findc .ficon{
+  font-size:1.4rem;line-height:1;
+  transition:transform 0.3s;
+}
+.findc.flow .ficon,.findc.fhigh .ficon,.findc.fmax .ficon{
+  animation:fanSpin 2s linear infinite;
+}
+.findc.fhigh .ficon{animation-duration:1.2s}
+.findc.fmax .ficon{animation-duration:0.6s}
+@keyframes fanSpin{to{transform:rotate(360deg)}}
+.ftxt{font-size:0.95rem;font-weight:700;letter-spacing:0.04em}
+
 /* === Parameters === */
 .pgrid{
   display:grid;grid-template-columns:repeat(2,1fr);gap:10px;
@@ -357,6 +405,7 @@ h1{
   h1{font-size:1.1rem}
   .tv{font-size:2.7rem}
   .hindc{width:88px;height:88px}
+  .findc{width:88px;height:88px}
   .conn span:last-child{display:none}
   .chwrap{height:180px}
   .sgrid{gap:4px}
@@ -422,25 +471,38 @@ h1{
       </div>
     </div>
 
-    <!-- Parametros -->
-    <div class="card" style="margin-bottom:14px" id="cardParams">
-      <div class="clbl"><span class="cico">&#9881;&#65039;</span> Par&aacute;metros de control</div>
-      <div class="pgrid">
-        <div class="pm">
-          <span class="pml">Setpoint</span>
-          <span class="pmv" id="sp">--.-&deg;C</span>
+    <div class="grid">
+      <!-- Ventilador -->
+      <div class="card" id="cardFan">
+        <div class="clbl"><span class="cico">&#128168;</span> Ventilador</div>
+        <div class="fstat">
+          <div class="findc foff" id="fi">
+            <span class="ficon" id="fico">&#128168;</span>
+            <span class="ftxt" id="ftxt">0%</span>
+          </div>
         </div>
-        <div class="pm">
-          <span class="pml">Tolerancia</span>
-          <span class="pmv" id="tol">&plusmn;-.-&deg;C</span>
-        </div>
-        <div class="pm">
-          <span class="pml">Rango</span>
-          <span class="pmv" id="rng">-- &ndash; --&deg;C</span>
-        </div>
-        <div class="pm crop">
-          <span class="pml">&#127793; Cultivo</span>
-          <span class="pmv" id="cult">--.-&deg;C</span>
+      </div>
+
+      <!-- Parametros -->
+      <div class="card" id="cardParams">
+        <div class="clbl"><span class="cico">&#9881;&#65039;</span> Par&aacute;metros de control</div>
+        <div class="pgrid">
+          <div class="pm">
+            <span class="pml">Setpoint</span>
+            <span class="pmv" id="sp">--.-&deg;C</span>
+          </div>
+          <div class="pm">
+            <span class="pml">Tolerancia</span>
+            <span class="pmv" id="tol">&plusmn;-.-&deg;C</span>
+          </div>
+          <div class="pm">
+            <span class="pml">Rango</span>
+            <span class="pmv" id="rng">-- &ndash; --&deg;C</span>
+          </div>
+          <div class="pm crop">
+            <span class="pml">&#127793; Cultivo</span>
+            <span class="pmv" id="cult">--.-&deg;C</span>
+          </div>
         </div>
       </div>
     </div>
@@ -555,6 +617,13 @@ h1{
       }else{
         ce.textContent='--.-\u00b0C';
       }
+    }
+
+    // Ventilador
+    if(d.fan!==undefined){
+      var fi=$('fi'),ft=$('ftxt');
+      ft.textContent=d.fan+'%';
+      fi.className='findc '+(d.fan>=100?'fmax':d.fan>=50?'fhigh':d.fan>0?'flow':'foff');
     }
 
     if(d.sp!==undefined) $('sp').textContent=d.sp.toFixed(1)+'\u00b0C';
