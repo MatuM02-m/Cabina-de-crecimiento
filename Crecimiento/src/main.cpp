@@ -22,15 +22,15 @@ const char* MQTT_TOPIC_HISTORY = "cabina/historial";
 
 // ============================================================
 //  PINES
-//  Lado izquierdo:  Relé, OneWire Bus 1
-//  Lado derecho:    OLED (I2C), OneWire Bus 2 y 3
+//  Lado izquierdo:  OneWire Bus 1, 2 y 3 (Sensores)
+//  Lado derecho:    Relé, Fan PWM, Buzzer PWM, OLED (I2C)
 // ============================================================
-const int PIN_OW_BUS1 = 4;    // OneWire Bus 1 — sensores izquierdos (↑Izq + ↓Izq)
-const int PIN_OW_BUS2 = 16;   // OneWire Bus 2 — sensores derechos  (↑Der + ↓Der)
-const int PIN_OW_BUS3 = 17;   // OneWire Bus 3 — sensor cultivo (seguridad)
-const int PIN_RELE    = 26;   // GPIO26 — Relé estufa
-const int PIN_FAN     = 27;   // GPIO27 — PWM ventilador (via BC337 + optoacoplador)
-const int PIN_BUZZER  = 25;   // GPIO25 — Buzzer 5V (alerta de seguridad)
+const int PIN_OW_BUS1 = 25;   // OneWire Bus 1 — sensores izquierdos (↑Izq + ↓Izq)
+const int PIN_OW_BUS2 = 26;   // OneWire Bus 2 — sensores derechos  (↑Der + ↓Der)
+const int PIN_OW_BUS3 = 27;   // OneWire Bus 3 — sensor cultivo (seguridad)
+const int PIN_RELE    = 4;    // GPIO4  — Relé estufa
+const int PIN_FAN     = 16;   // GPIO16 — PWM ventilador (via BC337 + optoacoplador)
+const int PIN_BUZZER  = 17;   // GPIO17 — Buzzer 5V (alerta de seguridad)
 const int PIN_LED     = 2;    // LED built-in
 
 // ============================================================
@@ -83,7 +83,7 @@ const int FAN_DUTY_MAX       = 255;    // 100%
 //  CONFIGURACIÓN DEL BUZZER (PWM)
 //  UDB-05LFPN: buzzer magnético (pasivo), 5V nom, 3-7V rango
 //  Necesita señal cuadrada a ~2300Hz para sonar
-//  Conectar directamente a GPIO25 (3.3V, 30mA máx — OK)
+//  Conectar directamente a GPIO17 (3.3V, 30mA máx — OK)
 // ============================================================
 const int BUZZER_FREQ       = 2300;   // 2300Hz (±400Hz según datasheet)
 const int BUZZER_RESOLUTION = 8;      // 8 bits
@@ -322,15 +322,15 @@ void leerSensores() {
   conversionPendiente = false;
 
   // 3. Leer temperaturas de cada bus
-  // Bus 1 (GPIO4): sensores lado izquierdo
+  // Bus 1 (GPIO25): sensores lado izquierdo
   if (sensoresBus1Count >= 1) tempSensores[ARRIBA_IZQ] = sensoresBus1.getTempCByIndex(0);
   if (sensoresBus1Count >= 2) tempSensores[ABAJO_IZQ]  = sensoresBus1.getTempCByIndex(1);
 
-  // Bus 2 (GPIO16): sensores lado derecho
+  // Bus 2 (GPIO26): sensores lado derecho
   if (sensoresBus2Count >= 1) tempSensores[ARRIBA_DER] = sensoresBus2.getTempCByIndex(0);
   if (sensoresBus2Count >= 2) tempSensores[ABAJO_DER]  = sensoresBus2.getTempCByIndex(1);
 
-  // Bus 3 (GPIO17): sensor del cultivo
+  // Bus 3 (GPIO27): sensor del cultivo
   if (sensoresBus3Count >= 1) tempCultivo = sensoresBus3.getTempCByIndex(0);
 
   // 4. Calcular promedio de cabina (solo sensores válidos)
