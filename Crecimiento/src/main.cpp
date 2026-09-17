@@ -73,6 +73,7 @@ enum SensorCabina { ARRIBA_IZQ = 0, ABAJO_IZQ = 1, ARRIBA_DER = 2, ABAJO_DER = 3
 // ============================================================
 const int FAN_PWM_FREQ       = 25000;  // 25kHz (inaudible)
 const int FAN_PWM_RESOLUTION = 8;      // 8 bits → 0-255
+const int FAN_PWM_CHANNEL    = 0;      // Canal LEDC 0
 const int FAN_DUTY_OFF       = 0;      //   0%
 const int FAN_DUTY_LOW       = 76;     // ~30%
 const int FAN_DUTY_HIGH      = 191;    // ~75%
@@ -86,6 +87,7 @@ const int FAN_DUTY_MAX       = 255;    // 100%
 // ============================================================
 const int BUZZER_FREQ       = 2300;   // 2300Hz (±400Hz según datasheet)
 const int BUZZER_RESOLUTION = 8;      // 8 bits
+const int BUZZER_CHANNEL    = 1;      // Canal LEDC 1
 const int BUZZER_DUTY_ON    = 128;    // 50% duty = onda cuadrada (tono)
 const int BUZZER_DUTY_OFF   = 0;      // Sin señal = silencio
 
@@ -397,7 +399,7 @@ void controlarVentilador() {
     fanPorcentaje = 30;
   }
 
-  ledcWrite(PIN_FAN, duty);
+  ledcWrite(FAN_PWM_CHANNEL, duty);
 }
 
 // ============================================================
@@ -417,13 +419,13 @@ void controlarSeguridad() {
     Serial.printf("     Cultivo: %.1f C | Accion: Estufa OFF, Fan 100%%, Buzzer ON\n", tempCultivo);
   } else if (modoSeguridad && tempCultivo <= TEMP_RECUPERACION) {
     modoSeguridad = false;
-    ledcWrite(PIN_BUZZER, BUZZER_DUTY_OFF);  // Apagar buzzer al recuperar
+    ledcWrite(BUZZER_CHANNEL, BUZZER_DUTY_OFF);  // Apagar buzzer al recuperar
     Serial.println("[OK] SEGURIDAD DESACTIVADA: Temp cultivo < 33 C");
     Serial.printf("     Cultivo: %.1f C | Volviendo a control normal\n", tempCultivo);
   }
 
   // Buzzer: tono a 2300Hz mientras esté en modo seguridad
-  ledcWrite(PIN_BUZZER, modoSeguridad ? BUZZER_DUTY_ON : BUZZER_DUTY_OFF);
+  ledcWrite(BUZZER_CHANNEL, modoSeguridad ? BUZZER_DUTY_ON : BUZZER_DUTY_OFF);
 }
 
 // ============================================================
@@ -533,16 +535,18 @@ void setup() {
   // --- Relé: configurar y arrancar apagado ---
   pinMode(PIN_RELE, OUTPUT);
   digitalWrite(PIN_RELE, RELE_APAGADO);
-  Serial.println("[OK] Rele configurado en GPIO26 (arranca apagado)");
+  Serial.printf("[OK] Rele configurado en GPIO%d (arranca apagado)\n", PIN_RELE);
 
-  // --- Ventilador: PWM a 25kHz ---
-  ledcAttach(PIN_FAN, FAN_PWM_FREQ, FAN_PWM_RESOLUTION);
-  ledcWrite(PIN_FAN, FAN_DUTY_OFF);  // Arranca apagado
-  Serial.println("[OK] Ventilador PWM configurado en GPIO27 (25kHz, 8-bit)");
+  // --- Ventilador: PWM a 25kHz (canal 0) ---
+  ledcSetup(FAN_PWM_CHANNEL, FAN_PWM_FREQ, FAN_PWM_RESOLUTION);
+  ledcAttachPin(PIN_FAN, FAN_PWM_CHANNEL);
+  ledcWrite(FAN_PWM_CHANNEL, FAN_DUTY_OFF);  // Arranca apagado
+  Serial.printf("[OK] Ventilador PWM configurado en GPIO%d (25kHz, 8-bit)\n", PIN_FAN);
 
-  // --- Buzzer: PWM a 2300Hz (UDB-05LFPN, buzzer magnético pasivo) ---
-  ledcAttach(PIN_BUZZER, BUZZER_FREQ, BUZZER_RESOLUTION);
-  ledcWrite(PIN_BUZZER, BUZZER_DUTY_OFF);  // Arranca en silencio
+  // --- Buzzer: PWM a 2300Hz (canal 1, UDB-05LFPN pasivo) ---
+  ledcSetup(BUZZER_CHANNEL, BUZZER_FREQ, BUZZER_RESOLUTION);
+  ledcAttachPin(PIN_BUZZER, BUZZER_CHANNEL);
+  ledcWrite(BUZZER_CHANNEL, BUZZER_DUTY_OFF);  // Arranca en silencio
   Serial.printf("[OK] Buzzer PWM configurado en GPIO%d (2300Hz, pasivo)\n", PIN_BUZZER);
 
   // --- DS18B20: inicializar los 3 buses OneWire ---
