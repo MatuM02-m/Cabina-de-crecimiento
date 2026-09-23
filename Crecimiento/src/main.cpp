@@ -74,10 +74,13 @@ enum SensorCabina { ARRIBA_IZQ = 0, ABAJO_IZQ = 1, ARRIBA_DER = 2, ABAJO_DER = 3
 const int FAN_PWM_FREQ       = 25000;  // 25kHz (inaudible)
 const int FAN_PWM_RESOLUTION = 8;      // 8 bits → 0-255
 const int FAN_PWM_CHANNEL    = 0;      // Canal LEDC 0
-const int FAN_DUTY_OFF       = 0;      //   0%
-const int FAN_DUTY_LOW       = 76;     // ~30%
-const int FAN_DUTY_HIGH      = 191;    // ~75%
-const int FAN_DUTY_MAX       = 255;    // 100%
+// NOTA: Duty cycles invertidos para configuración colector con pull-up RL
+// GPIO HIGH → 4N25 conduce → colector LOW → BC337 OFF → Fan OFF
+// GPIO LOW  → 4N25 corta   → colector HIGH (via RL) → BC337 ON → Fan ON
+const int FAN_DUTY_OFF       = 255;    //   0% velocidad (GPIO siempre HIGH → fan OFF)
+const int FAN_DUTY_LOW       = 179;    // ~30% velocidad (255 - 76)
+const int FAN_DUTY_HIGH      = 64;     // ~75% velocidad (255 - 191)
+const int FAN_DUTY_MAX       = 0;      // 100% velocidad (GPIO siempre LOW → fan MAX)
 
 // ============================================================
 //  CONFIGURACIÓN DEL BUZZER (PWM)
@@ -140,8 +143,8 @@ float tempSensores[4] = {-127.0, -127.0, -127.0, -127.0};  // 4 sensores cabina
 float tempCultivo     = -127.0;   // Sensor del cultivo (seguridad)
 float temperatura     = 0.0;      // Promedio de cabina (para control)
 bool estufaEncendida  = false;
-int  fanPorcentaje    = 0;       // Porcentaje actual del ventilador (0-100)
-bool modoSeguridad    = false;   // Lazo de seguridad activo
+int  fanPorcentaje    = 0;        // Porcentaje actual del ventilador (0-100)
+bool modoSeguridad    = false;    // Lazo de seguridad activo
 bool primeraLectura   = false;
 unsigned long ultimaActualizacion = 0;
 
@@ -337,8 +340,6 @@ void leerSensores() {
   float suma = 0;
   int validos = 0;
   for (int i = 0; i < 4; i++) {
-    // Rango válido del DS18B20: -55°C a +125°C
-    // Usamos -50 a 85 como rango razonable para la cabina
     if (tempSensores[i] > -50.0 && tempSensores[i] < 85.0) {
       suma += tempSensores[i];
       validos++;
@@ -581,7 +582,7 @@ void setup() {
   Serial.println("\nDirecciones ROM:");
   for (int i = 0; i < sensoresBus1Count; i++) {
     if (sensoresBus1.getAddress(addr, i)) {
-      Serial.printf("  Bus 1, Sensor %d (idx %d → %s): ",
+      Serial.printf("  Bus 1, Sensor %d (idx %d -> %s): ",
                     i, i, i == 0 ? "Arriba Izq" : "Abajo Izq");
       printAddress(addr);
       Serial.println();
@@ -589,7 +590,7 @@ void setup() {
   }
   for (int i = 0; i < sensoresBus2Count; i++) {
     if (sensoresBus2.getAddress(addr, i)) {
-      Serial.printf("  Bus 2, Sensor %d (idx %d → %s): ",
+      Serial.printf("  Bus 2, Sensor %d (idx %d -> %s): ",
                     i, i, i == 0 ? "Arriba Der" : "Abajo Der");
       printAddress(addr);
       Serial.println();
