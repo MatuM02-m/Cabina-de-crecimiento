@@ -481,6 +481,8 @@ h1{
   $('cfgSave').onclick=function(){
     var host=$('cfgHost').value.trim();
     var port=parseInt($('cfgPort').value)||8884;
+    // Si por error se ingresa 8883, corregir automáticamente a 8884 para WebSockets
+    if(port === 8883) port = 8884;
     var user=$('cfgUser').value.trim();
     var pass=$('cfgPass').value;
     if(!host||!user||!pass){alert('Completá todos los campos');return}
@@ -495,8 +497,11 @@ h1{
     var cfg=loadCfg();
     if(!cfg||!cfg.host){showCfg();return}
 
+    // Corrección automática en caso de que haya quedado 8883 en localStorage
+    var port = (cfg.port === 8883 || !cfg.port) ? 8884 : cfg.port;
+
     $('ctxt').textContent='Conectando...';
-    var url='wss://'+cfg.host+':'+cfg.port+'/mqtt';
+    var url='wss://'+cfg.host+':'+port+'/mqtt';
     mqttClient=mqtt.connect(url,{
       username:cfg.user,
       password:cfg.pass,
